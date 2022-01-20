@@ -6,6 +6,7 @@ import org.jenkinsci.test.acceptance.controller.JenkinsController;
 import org.jenkinsci.test.acceptance.controller.WinstoneController;
 import org.jenkinsci.test.acceptance.guice.TestCleaner;
 import org.jenkinsci.test.acceptance.guice.TestScope;
+import org.jenkinsci.test.acceptance.plugins.matrix_auth.MatrixAuthorizationStrategy;
 import org.jenkinsci.test.acceptance.plugins.matrix_auth.MatrixRow;
 import org.jenkinsci.test.acceptance.plugins.matrix_auth.ProjectBasedMatrixAuthorizationStrategy;
 import org.jenkinsci.test.acceptance.plugins.matrix_auth.ProjectMatrixProperty;
@@ -158,11 +159,11 @@ public class ProjectBasedMatrixSecurityHelper {
     }
 
     private void enableProjectBasedMatrixSecurity(
-            Consumer<ProjectBasedMatrixAuthorizationStrategy> configureMatrixSecurity) {
+            Consumer<CustomProjectBasedMatrixAuthorizationStrategy> configureMatrixSecurity) {
         GlobalSecurityConfig securityConfig = new GlobalSecurityConfig(jenkins);
         securityConfig.configure();
         configureMatrixSecurity.accept(
-                securityConfig.useAuthorizationStrategy(ProjectBasedMatrixAuthorizationStrategy.class));
+                securityConfig.useAuthorizationStrategy(CustomProjectBasedMatrixAuthorizationStrategy.class));
         securityConfig.save();
     }
 
@@ -185,5 +186,33 @@ public class ProjectBasedMatrixSecurityHelper {
             userRow = addUserRow.get();
         }
         return userRow;
+    }
+
+    /**
+     * This class is a backport of the fix to https://github.com/jenkinsci/acceptance-test-harness/issues/721
+     * Once we can upgrade to a version of the test-harness with the fix this class should be removed.
+     *
+     * The class is a backport and hack to make it work in our version of the released ProjectBasedMatrixAuthorizationStrategy
+     * as well as ProjectMatrixProperty.
+     */
+    @Describable("Project-based Matrix Authorization Strategy")
+    public static class CustomProjectBasedMatrixAuthorizationStrategy extends ProjectBasedMatrixAuthorizationStrategy {
+        private final Control name = control("/data");
+
+        public CustomProjectBasedMatrixAuthorizationStrategy(GlobalSecurityConfig context, String path) {
+            super(context, path);
+        }
+
+        /**
+         * Adds a new user to this matrix.
+         */
+        public MatrixRow addUser(String name) {
+            runThenHandleAlert(() -> this.name.resolve().findElement(by.parent()).findElement(by.button("Add user…")).click(),
+                    a -> {
+                        a.sendKeys(name);
+                        a.accept();
+                    });
+            return getUser(name);
+        }
     }
 }
